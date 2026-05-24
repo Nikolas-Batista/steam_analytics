@@ -48,16 +48,20 @@ def load_tags_data():
     df["playtime_medio"] = df["playtime_medio"].clip(lower=0)
     return df
 
+
 @st.cache_data(ttl=3600)
 def load_opportunity_data():
     """
-    Carrega o CSV gerado pelo feature_engineering.py
+    Carrega os opportunity scores direto do banco.
     """
-    path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "analysis", "opportunity_scores.csv"
-    )
-    return pd.read_csv(path)
+    conn = get_connection()
+    query = """
+        SELECT * FROM opportunity_scores
+        ORDER BY opportunity_score DESC
+    """
+    df = pd.read_sql(query, conn)
+    conn.close()
+    return df
 
 
 @st.cache_data(ttl=3600)

@@ -227,6 +227,60 @@ def calc_opportunity_score(df):
     return df
 
 
+def save_scores_to_db(df):
+    """
+    Salva os opportunity scores no banco de dados.
+    """
+    print("\n💾 Salvando scores no banco...")
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    sql = """
+        INSERT INTO opportunity_scores (
+            app_id, name, release_date, is_indie, is_free,
+            price_usd, owners_min, total_reviews, positive_pct,
+            revenue_estimate, revenue_per_review,
+            ccu_to_owners_ratio, complexity_score, opportunity_score
+        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        ON CONFLICT (app_id) DO UPDATE SET
+            opportunity_score   = EXCLUDED.opportunity_score,
+            complexity_score    = EXCLUDED.complexity_score,
+            revenue_estimate    = EXCLUDED.revenue_estimate,
+            revenue_per_review  = EXCLUDED.revenue_per_review,
+            ccu_to_owners_ratio = EXCLUDED.ccu_to_owners_ratio,
+            collected_at        = NOW();
+    """
+
+    sucesso = 0
+    for _, row in df.iterrows():
+        try:
+            cursor.execute(sql, (
+                int(row["app_id"]) if pd.notna(row.get("app_id")) else None,
+                row.get("name"),
+                row.get("release_date"),
+                bool(row["is_indie"]) if pd.notna(row.get("is_indie")) else None,
+                bool(row["is_free"]) if pd.notna(row.get("is_free")) else None,
+                float(row["price_usd"]) if pd.notna(row.get("price_usd")) else None,
+                int(row["owners_min"]) if pd.notna(row.get("owners_min")) else None,
+                int(row["total_reviews"]) if pd.notna(row.get("total_reviews")) else None,
+                float(row["positive_pct"]) if pd.notna(row.get("positive_pct")) else None,
+                float(row["revenue_estimate"]) if pd.notna(row.get("revenue_estimate")) else None,
+                float(row["revenue_per_review"]) if pd.notna(row.get("revenue_per_review")) else None,
+                float(row["ccu_to_owners_ratio"]) if pd.notna(row.get("ccu_to_owners_ratio")) else None,
+                float(row["complexity_score"]) if pd.notna(row.get("complexity_score")) else None,
+                float(row["opportunity_score"]) if pd.notna(row.get("opportunity_score")) else None,
+            ))
+            sucesso += 1
+        except Exception as e:
+            conn.rollback()
+            continue
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+    print(f"   ✅ {sucesso} scores salvos no banco.")
+
 # ─────────────────────────────────────────
 # EXECUÇÃO PRINCIPAL
 # ─────────────────────────────────────────
@@ -278,7 +332,9 @@ def run():
     )
     df.to_csv(output_path, index=False)
     print(f"\n✅ Resultado salvo em: {output_path}")
+    save_scores_to_db(df)
     print("\n🏁 Feature engineering concluído!")
+
 
 
 if __name__ == "__main__":
