@@ -179,9 +179,9 @@ games (tabela principal)
 | developer | TEXT | Nome do desenvolvedor |
 | publisher | TEXT | Nome do publisher |
 | engine | TEXT | Engine utilizada |
-| genres | TEXT[] | Array de gêneros (IGDB) |
-| themes | TEXT[] | Array de temas (IGDB) |
-| game_modes | TEXT[] | Modos de jogo (IGDB) |
+| genres | TEXT | Array de gêneros (IGDB) |
+| themes | TEXT | Array de temas (IGDB) |
+| game_modes | TEXT | Modos de jogo (IGDB) |
 | igdb_id | INTEGER | ID no IGDB |
 
 ### Tabela: `ccu_snapshots`
