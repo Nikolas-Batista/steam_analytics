@@ -1,6 +1,8 @@
-# 🎮 Steam Market Intelligence Pipeline
+# 🎮 Steam Market Intelligence
 
 > Pipeline completo de dados para identificar oportunidades de criação de jogos lucrativos na Steam, com foco em baixo custo de produção e alto retorno financeiro.
+
+🔗 **Dashboard ao vivo:** [Steam Market Intelligence](https://steamanalytics-tzfhvipxjwzanqgljaaryp.streamlit.app/)
 
 ---
 
@@ -18,16 +20,28 @@
 - [Como Executar](#como-executar)
 - [Estrutura de Pastas](#estrutura-de-pastas)
 - [Requisitos](#requisitos)
+- [Insights Identificados](#insights-identificados)
 
 ---
 
 ## Visão Geral
 
-Este projeto é um pipeline de dados end-to-end construído em Python com persistência em PostgreSQL. Ele coleta, processa e analisa dados de mais de **4.800 jogos da Steam** para identificar nichos de mercado com alta demanda, boa retenção e baixa complexidade de produção.
+Este projeto é um pipeline de dados end-to-end construído em Python com persistência em PostgreSQL. Ele coleta, processa e analisa dados de mais de **4.826 jogos da Steam** para identificar nichos de mercado com alta demanda, boa retenção e baixa complexidade de produção.
 
-O resultado final é um dashboard interativo que responde a pergunta central do projeto:
+O resultado final é um dashboard interativo público que responde a pergunta central do projeto:
 
 > **"Qual tipo de jogo devo desenvolver para maximizar retorno com mínimo de esforço?"**
+
+### Números do projeto
+
+| Métrica | Valor |
+|---|---|
+| Jogos analisados | 4.826 |
+| Jogos Indie | 2.561 |
+| Tags mapeadas | 85.690 |
+| Jogos com Opportunity Score | 2.946 |
+| Tabelas relacionais | 6 |
+| Preço médio da base | $17.46 |
 
 ---
 
@@ -49,7 +63,7 @@ O pipeline foi desenvolvido para apoiar a decisão de um micro-estúdio (dupla d
 ```
 Steam Store API ──┐
 SteamSpy API ─────┤
-Steam Reviews ────┼──► Python (Ingestão) ──► PostgreSQL ──► Feature Engineering ──► Dashboard Streamlit
+Steam Reviews ────┼──► Python (Ingestão) ──► PostgreSQL (Supabase) ──► Feature Engineering ──► Dashboard Streamlit
 Steam CCU API ────┤
 IGDB API ─────────┘
 ```
@@ -59,12 +73,15 @@ IGDB API ─────────┘
 | Camada | Tecnologia |
 |---|---|
 | Linguagem | Python 3.11+ |
-| Banco de Dados | PostgreSQL |
-| ORM / Conexão | psycopg2 |
+| Banco local | PostgreSQL |
+| Banco na nuvem | Supabase (PostgreSQL) |
+| Conexão | psycopg2 |
 | Análise de Dados | Pandas |
 | Machine Learning | scikit-learn (MinMaxScaler) |
 | Visualização | Plotly Express |
 | Dashboard | Streamlit |
+| Deploy | Streamlit Cloud |
+| Versionamento | GitHub |
 | Variáveis de Ambiente | python-dotenv |
 
 ---
@@ -74,32 +91,27 @@ IGDB API ─────────┘
 ### 1. Steam Store API
 - **URL:** `https://store.steampowered.com/api/appdetails?appids={id}`
 - **O que coleta:** Dados principais do jogo — nome, preço, data de lançamento, categorias, gêneros, descrição, nota Metacritic
-- **Frequência:** Ingestão inicial + atualizações periódicas
 - **Autenticação:** Não requer API key
 
 ### 2. SteamSpy API
 - **URL:** `https://steamspy.com/api.php`
 - **O que coleta:** Estimativa de owners, tempo médio e mediano de jogo, CCU atual, tags dos jogos
-- **Frequência:** Ingestão inicial + atualizações periódicas
 - **Autenticação:** Não requer API key
 - **Limitação:** Rate limit de ~1 request/segundo. Owners retornado como range (ex: "1,000,000 .. 2,000,000")
 
 ### 3. Steam Reviews API
 - **URL:** `https://store.steampowered.com/appreviews/{id}?json=1`
 - **O que coleta:** Total de reviews, positivas, negativas e descrição do score
-- **Frequência:** Ingestão inicial + atualizações periódicas
 - **Autenticação:** Não requer API key
 
 ### 4. Steam CCU API
 - **URL:** `https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid={id}`
-- **O que coleta:** Número de jogadores online no momento da execução
-- **Frequência:** Captura periódica (série temporal) — quanto mais execuções, mais rica a série
+- **O que coleta:** Número de jogadores online no momento da execução (série temporal)
 - **Autenticação:** Não requer API key
 
 ### 5. IGDB API
 - **URL:** `https://api.igdb.com/v4/games`
 - **O que coleta:** Engine, developer, publisher, gêneros estruturados, temas, modos de jogo
-- **Frequência:** Ingestão inicial
 - **Autenticação:** Requer conta Twitch + Client ID + Client Secret (gratuito)
 
 ---
@@ -111,11 +123,12 @@ O banco é relacional e normalizado. Todas as tabelas se conectam à tabela `gam
 ```
 games (tabela principal)
 │
-├── game_financials   (owners, playtime, CCU)
-├── game_reviews      (reviews, score, percentual positivo)
-├── game_tags         (tags many-to-many)
-├── game_metadata     (IGDB: engine, developer, gêneros)
-└── ccu_snapshots     (série temporal de jogadores online)
+├── game_financials     (owners, playtime, CCU)
+├── game_reviews        (reviews, score, percentual positivo)
+├── game_tags           (tags many-to-many)
+├── game_metadata       (IGDB: engine, developer, gêneros)
+├── ccu_snapshots       (série temporal de jogadores online)
+└── opportunity_scores  (scores calculados pelo feature engineering)
 ```
 
 ### Tabela: `games`
@@ -157,7 +170,7 @@ games (tabela principal)
 | app_id | INTEGER FK | Referência ao jogo |
 | tag | TEXT | Tag do jogo (ex: "Puzzle", "RPG") |
 
-> Um jogo pode ter múltiplas tags. Essa é uma relação many-to-many.
+> Um jogo pode ter múltiplas tags — relação many-to-many.
 
 ### Tabela: `game_metadata`
 | Campo | Tipo | Descrição |
@@ -178,13 +191,23 @@ games (tabela principal)
 | ccu | INTEGER | Jogadores online no momento |
 | collected_at | TIMESTAMP | Timestamp da captura |
 
-> Cada execução do script gera uma nova linha. Com execuções periódicas, essa tabela forma uma série temporal de retenção.
+> Cada execução gera uma nova linha — série temporal de retenção.
+
+### Tabela: `opportunity_scores`
+| Campo | Tipo | Descrição |
+|---|---|---|
+| app_id | INTEGER PK | Referência ao jogo |
+| revenue_estimate | NUMERIC | Receita estimada |
+| revenue_per_review | NUMERIC | Receita por review |
+| ccu_to_owners_ratio | NUMERIC | % de donos jogando agora |
+| complexity_score | NUMERIC | Complexidade de produção (1–10) |
+| opportunity_score | NUMERIC | Score final de oportunidade (0–100) |
 
 ---
 
 ## Pipeline de Ingestão
 
-Os scripts devem ser executados nessa ordem — cada um depende da tabela `games` estar populada:
+Os scripts devem ser executados nessa ordem:
 
 ```
 1. ingest/steam_store.py    → popula games
@@ -192,9 +215,10 @@ Os scripts devem ser executados nessa ordem — cada um depende da tabela `games
 3. ingest/steam_reviews.py  → popula game_reviews
 4. ingest/steam_ccu.py      → popula ccu_snapshots
 5. ingest/igdb.py           → popula game_metadata
+6. analysis/feature_engineering.py → popula opportunity_scores
 ```
 
-Todos os scripts usam `ON CONFLICT DO UPDATE` ou `ON CONFLICT DO NOTHING`, garantindo **idempotência** — podem ser re-executados sem duplicar dados.
+Todos os scripts usam `ON CONFLICT DO UPDATE` ou `ON CONFLICT DO NOTHING` — podem ser re-executados sem duplicar dados.
 
 Para atualizar toda a base de uma vez:
 
@@ -208,7 +232,7 @@ python run_pipeline.py
 
 O arquivo `analysis/feature_engineering.py` transforma os dados brutos em métricas analíticas.
 
-### Filtros aplicados antes do cálculo
+### Filtros aplicados
 - Remove jogos gratuitos (price_usd = 0)
 - Remove jogos com preço abaixo de $3
 - Remove jogos com menos de 10 reviews
@@ -218,27 +242,17 @@ O arquivo `analysis/feature_engineering.py` transforma os dados brutos em métri
 
 | Métrica | Fórmula | Interpretação |
 |---|---|---|
-| `revenue_estimate` | owners_min × price_usd × 0.35 | Receita estimada após margem Steam (30%) e descontos |
+| `revenue_estimate` | owners_min × price_usd × 0.35 | Receita estimada após margem Steam (30%) |
 | `revenue_per_review` | revenue_estimate / total_reviews | Eficiência de monetização por review |
 | `ccu_to_owners_ratio` | peak_ccu / owners_min | % de donos jogando — proxy de retenção |
 | `complexity_score` | Baseado nas tags | Estimativa de tempo de desenvolvimento (1–10) |
 | `opportunity_score` | Fórmula abaixo | Score final de oportunidade (0–100) |
 
-### Complexity Score
-
-O `complexity_score` é calibrado para uma **dupla dev+artista** e estima o tempo de desenvolvimento com base nas tags do jogo:
-
-| Complexidade | Score | Exemplos de tags |
-|---|---|---|
-| Alta (12+ meses) | +2 por tag | MMO, Open World, Battle Royale, Grand Strategy |
-| Média (6–12 meses) | +0.5 por tag | RPG, Survival, Multiplayer, Metroidvania |
-| Baixa (3–6 meses) | -0.5 por tag | Puzzle, Platformer, Visual Novel, Arcade, Roguelite |
-
 ---
 
 ## Opportunity Score
 
-O Opportunity Score é o coração do projeto. Ele combina múltiplas dimensões em um único número de 0 a 100.
+O Opportunity Score combina múltiplas dimensões em um único número de 0 a 100.
 
 ### Fórmula
 
@@ -254,65 +268,75 @@ Opportunity Score = (
 
 | Componente | Peso | Justificativa |
 |---|---|---|
-| `revenue_per_review` | 40% | Eficiência real de monetização — melhor indicador que receita bruta |
-| `positive_pct` | 35% | Aceitação do mercado — jogos mal avaliados não sustentam |
-| `ccu_to_owners_ratio` | 25% | Retenção real — jogadores voltando é sinal de longevidade |
+| `revenue_per_review` | 40% | Eficiência real de monetização |
+| `positive_pct` | 35% | Aceitação do mercado |
+| `ccu_to_owners_ratio` | 25% | Retenção real |
 | `complexity_penalty` | Divisor | Penaliza jogos fora do alcance da dupla |
 
-> Todos os componentes são normalizados individualmente via MinMaxScaler (0–100) antes de entrar na fórmula, garantindo que nenhuma métrica domine por escala.
+### Complexity Score
+
+Calibrado para dupla dev+artista:
+
+| Complexidade | Score | Exemplos de tags |
+|---|---|---|
+| Alta (12+ meses) | +2 por tag | MMO, Open World, Battle Royale, Grand Strategy |
+| Média (6–12 meses) | +0.5 por tag | RPG, Survival, Multiplayer, Metroidvania |
+| Baixa (3–6 meses) | -0.5 por tag | Puzzle, Platformer, Visual Novel, Arcade, Roguelite |
 
 ---
 
 ## Dashboard
 
-O dashboard é construído em Streamlit com Plotly e tem 5 abas.
+Dashboard interativo com 5 abas — acesse em:
+**[https://steamanalytics-tzfhvipxjwzanqgljaaryp.streamlit.app/](https://steamanalytics-tzfhvipxjwzanqgljaaryp.streamlit.app/)**
 
 ### Aba 1 — 🏆 Ranking de Oportunidades
-Exibe os jogos com maior Opportunity Score, com filtros interativos de complexidade, tipo (indie/todos) e quantidade.
+Jogos com maior Opportunity Score, com filtros de complexidade, tipo (indie/todos) e quantidade.
 
 **Como usar:** Filtra a complexidade máxima para o escopo que você consegue entregar. Para uma dupla em 3–6 meses, use complexidade ≤ 4.
 
 ### Aba 2 — 🏷️ Análise por Tags
-Dois gráficos lado a lado:
-- **Tags mais comuns** → mostra onde está a concorrência
-- **Tags com melhor avaliação** → mostra onde está a qualidade
+- **Tags mais comuns** → onde está a concorrência
+- **Tags com melhor avaliação** → onde está a qualidade
 
-**Como usar:** Tags que aparecem pouco no gráfico da esquerda mas bem no da direita são nichos pouco explorados e bem aceitos.
+**Como usar:** Tags com pouca concorrência e alta avaliação são nichos pouco explorados e bem aceitos.
 
 ### Aba 3 — 💰 Preço vs Sucesso
-Analisa qual faixa de preço gera mais owners e melhor avaliação. Inclui scatter plot individual de cada jogo.
+Qual faixa de preço gera mais owners e melhor avaliação. Inclui scatter plot individual de cada jogo.
 
-**Como usar:** Identifica o sweet spot de precificação para o seu gênero alvo. Historicamente, $10–$20 é a faixa com melhor equilíbrio entre volume e aceitação no mercado indie.
+**Como usar:** Historicamente, $10–$20 é a faixa com melhor equilíbrio entre volume e aceitação no mercado indie.
 
 ### Aba 4 — 🗺️ Mapa de Nichos
-Scatter plot onde cada bolha é uma tag. Os eixos são concorrência (X) e avaliação média (Y). O tamanho da bolha representa o owners médio.
+Scatter plot onde cada bolha é uma tag. Eixos: concorrência (X) vs avaliação média (Y). Tamanho = owners médio.
 
 **Como ler:**
 - 🎯 **Canto superior esquerdo** → alta avaliação + baixa concorrência = **nicho ideal**
-- ⚠️ **Canto superior direito** → alta avaliação + alta concorrência = mercado validado mas saturado
-- ❌ **Canto inferior** → baixa avaliação = evitar independente da concorrência
-
-Abaixo do gráfico, a tabela **Nichos Ideais** filtra automaticamente os melhores candidatos.
+- ⚠️ **Canto superior direito** → alta avaliação + alta concorrência = mercado saturado mas validado
+- ❌ **Canto inferior** → baixa avaliação = evitar
 
 ### Aba 5 — 📈 Tendências Temporais
-Quatro gráficos mostrando a evolução do mercado de 2010 a 2025: lançamentos por ano, avaliação média, preço médio e total indie. Inclui comparador interativo de gêneros por ano.
-
-**Como usar:** Seleciona tags no comparador para ver quais gêneros estão crescendo ou saturando. Tags com linha subindo nos últimos 2–3 anos indicam boa janela de entrada.
+Evolução do mercado de 2010 a 2025: lançamentos por ano, avaliação média, preço médio e total indie. Comparador interativo de gêneros por ano.
 
 ---
 
 ## Como Executar
 
-### Pré-requisitos
+### Acesso rápido
+Acesse o dashboard sem instalar nada:
+**[https://steamanalytics-tzfhvipxjwzanqgljaaryp.streamlit.app/](https://steamanalytics-tzfhvipxjwzanqgljaaryp.streamlit.app/)**
+
+### Rodar localmente
+
+**Pré-requisitos:**
 - Python 3.11+
 - PostgreSQL instalado e rodando
 - Conta Twitch para API key do IGDB (gratuita)
 
-### 1. Clone o repositório e configure o ambiente
+**1. Clone e configure o ambiente:**
 
 ```bash
-git clone https://github.com/seu-usuario/steam-pipeline.git
-cd steam-pipeline
+git clone https://github.com/Nikolas-Batista/steam_analytics.git
+cd steam_analytics
 
 python -m venv venv
 venv\Scripts\activate       # Windows
@@ -321,24 +345,24 @@ source venv/bin/activate    # Mac/Linux
 pip install -r requirements.txt
 ```
 
-### 2. Configure as variáveis de ambiente
+**2. Configure as variáveis de ambiente:**
 
-Cria um arquivo `.env` na raiz do projeto:
+Cria um arquivo `.env` na raiz:
 
 ```env
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=steam_pipeline
-DB_USER=postgres
-DB_PASSWORD=sua_senha
+LOCAL_DB_HOST=localhost
+LOCAL_DB_PORT=5432
+LOCAL_DB_NAME=steam_pipeline
+LOCAL_DB_USER=postgres
+LOCAL_DB_PASSWORD=sua_senha_local
+
+DATABASE_URL=sua_connection_string_supabase
 
 IGDB_CLIENT_ID=seu_client_id
 IGDB_CLIENT_SECRET=seu_client_secret
 ```
 
-### 3. Crie o banco de dados
-
-No PostgreSQL (via DBeaver ou psql):
+**3. Crie o banco de dados:**
 
 ```sql
 CREATE DATABASE steam_pipeline;
@@ -350,24 +374,13 @@ Execute o schema:
 psql -U postgres -d steam_pipeline -f db/schema.sql
 ```
 
-### 4. Execute o pipeline
+**4. Execute o pipeline:**
 
 ```bash
 python run_pipeline.py
 ```
 
-Ou individualmente:
-
-```bash
-python ingest/steam_store.py
-python ingest/steamspy.py
-python ingest/steam_reviews.py
-python ingest/steam_ccu.py
-python ingest/igdb.py
-python analysis/feature_engineering.py
-```
-
-### 5. Rode o dashboard
+**5. Rode o dashboard:**
 
 ```bash
 streamlit run dashboard/app.py
@@ -380,33 +393,32 @@ Acessa em: `http://localhost:8501`
 ## Estrutura de Pastas
 
 ```
-steam_pipeline/
+steam_analytics/
 │
 ├── db/
-│   └── schema.sql                  ← DDL das 6 tabelas
+│   └── schema.sql                      ← DDL das tabelas
 │
 ├── ingest/
 │   ├── __init__.py
-│   ├── steam_store.py              ← Steam Store API
-│   ├── steamspy.py                 ← SteamSpy API
-│   ├── steam_reviews.py            ← Steam Reviews API
-│   ├── steam_ccu.py                ← CCU em tempo real
-│   └── igdb.py                     ← IGDB (Twitch)
+│   ├── steam_store.py                  ← Steam Store API
+│   ├── steamspy.py                     ← SteamSpy API
+│   ├── steam_reviews.py                ← Steam Reviews API
+│   ├── steam_ccu.py                    ← CCU em tempo real
+│   └── igdb.py                         ← IGDB (Twitch)
 │
 ├── analysis/
 │   ├── __init__.py
-│   ├── feature_engineering.py      ← métricas e opportunity score
-│   └── opportunity_scores.csv      ← output gerado automaticamente
+│   └── feature_engineering.py          ← métricas e opportunity score
 │
 ├── dashboard/
 │   ├── __init__.py
-│   └── app.py                      ← Streamlit (5 abas)
+│   └── app.py                          ← Streamlit (5 abas)
 │
-├── config.py                       ← lê variáveis do .env
-├── db_connection.py                ← conexão reutilizável
-├── run_pipeline.py                 ← executa tudo em sequência
+├── config.py                           ← lê variáveis do .env
+├── db_connection.py                    ← conexão reutilizável
+├── run_pipeline.py                     ← executa tudo em sequência
 ├── requirements.txt
-└── .env                            ← credenciais (não versionar)
+└── .env                                ← credenciais (não versionar)
 ```
 
 ---
@@ -415,16 +427,14 @@ steam_pipeline/
 
 ```
 psycopg2-binary
-sqlalchemy
 pandas
 requests
 python-dotenv
 streamlit
 plotly
 scikit-learn
+numpy
 ```
-
-Instala tudo com:
 
 ```bash
 pip install -r requirements.txt
@@ -434,20 +444,23 @@ pip install -r requirements.txt
 
 ## Insights Identificados
 
-Com base nos dados coletados, os nichos com maior Opportunity Score para uma dupla dev+artista são:
+Com base nos dados de 4.826 jogos analisados, os nichos com maior Opportunity Score para uma dupla dev+artista são:
 
 | Nicho | Concorrência | Avaliação | Preço Médio |
 |---|---|---|---|
-| Cozy | Baixa | 91%+ | ~$15 |
-| Rhythm | Baixa | 91%+ | ~$14 |
-| Wholesome | Baixíssima | 90%+ | ~$17 |
-| Precision Platformer | Baixa | 90%+ | ~$10 |
-| Philosophical | Baixa | 90%+ | ~$14 |
-| Text-Based | Baixa | 90%+ | ~$11 |
+| Cozy | 20 jogos | 91.4% | ~$15 |
+| Rhythm | 42 jogos | 91.4% | ~$14 |
+| Wholesome | 14 jogos | 90.9% | ~$17 |
+| Precision Platformer | 25 jogos | 90.5% | ~$10 |
+| Philosophical | 34 jogos | 90.9% | ~$14 |
+| Text-Based | 32 jogos | 90.1% | ~$11 |
+| Silent Protagonist | 12 jogos | 91.0% | ~$13 |
 
 **Faixa de preço ideal:** $10–$20
 
-**Padrão dos jogos de maior oportunidade:** Uma mecânica central bem executada, arte autoral forte, narrativa ou atmosfera marcante, escopo pequeno.
+**Padrão dos jogos de maior oportunidade:** Uma mecânica central bem executada, arte autoral forte, narrativa ou atmosfera marcante, escopo pequeno (3–5 meses para dupla dev+artista).
+
+**Referências de mercado identificadas:** GRIS, Hidden Folks, Balatro, Baba Is You, Melatonin, FEZ, OneShot.
 
 ---
 
