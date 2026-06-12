@@ -1,5 +1,9 @@
 # Metodologia — Como Calculamos Faturamento e Oportunidade
 
+> Documento explicativo sobre os critérios e ponderações usados no Steam Market Intelligence para estimar faturamento de jogos e calcular o Opportunity Score.
+
+---
+
 ## 1. Como estimamos o faturamento de um jogo
 
 ### O desafio
@@ -153,7 +157,38 @@ Da mesma forma, tags que indicam sistemas complexos de jogo (não de arte) — c
 
 ---
 
-## 3. Resumo — por que essas escolhas fazem sentido para o negócio
+## 3. O Ranking — critérios de desempate
+
+O Opportunity Score é normalizado em uma escala de 0 a 100, o que significa que **empates são esperados** — vários jogos podem chegar a scores muito próximos ou idênticos (ex: 100.0).
+
+Para transformar o score em um **ranking definitivo** (posição #1, #2, #3...), aplicamos uma hierarquia de critérios de desempate:
+
+| Posição | Critério | Direção | Por quê |
+|---|---|---|---|
+| 1º | Opportunity Score | Maior é melhor | Critério principal — combina receita, avaliação e retenção |
+| 2º (desempate) | Complexidade de Produção | **Menor** é melhor | Entre duas oportunidades equivalentes, a mais simples reduz risco de execução para a dupla |
+| 3º (desempate) | Avaliação Positiva | Maior é melhor | Reputação de mercado já validada é sinal de "fórmula aprovada" |
+| 4º (desempate) | Receita por Review | Maior é melhor | Critério mais sensível a ruído — usado apenas como último recurso |
+
+### Exemplo prático
+
+```
+Jogo A → Opportunity Score: 80.0 | Complexidade: 2.0 | Avaliação: 95%
+Jogo B → Opportunity Score: 80.0 | Complexidade: 1.5 | Avaliação: 90%
+
+Resultado: Jogo B fica em posição superior no ranking,
+porque em empate de score, menor complexidade vence.
+```
+
+### Por que essa ordem específica
+
+A lógica reflete como uma dupla pequena deveria pensar na prática: **"entre duas apostas igualmente promissoras, escolha a que você consegue executar com menos risco"**. Só depois de resolver isso é que entram critérios sobre como o mercado recebeu o jogo (avaliação) e, por último, a eficiência financeira pura — que é o dado mais sujeito a ruído na nossa estimativa.
+
+A coluna **#** no dashboard reflete diretamente essa posição final — é a ordem recomendada de prioridade para análise.
+
+---
+
+## 4. Resumo — por que essas escolhas fazem sentido para o negócio
 
 | Decisão | Razão de negócio |
 |---|---|
@@ -166,7 +201,7 @@ Da mesma forma, tags que indicam sistemas complexos de jogo (não de arte) — c
 
 ---
 
-## 4. Limitações que devem ser consideradas
+## 5. Limitações que devem ser consideradas
 
 - Os valores de receita são **estimativas de ordem de grandeza**, não auditorias financeiras
 - A base de dados reflete o mercado **histórico** — não garante que um nicho continuará com a mesma demanda no futuro

@@ -227,10 +227,23 @@ def calc_opportunity_score(df):
     return df
 
 
+def calc_rank(df):
+    """
+    Calcula o ranking final usando critérios de desempate hierárquicos:
+    1º - opportunity_score (maior é melhor)
+    2º - complexity_score (menor é melhor)
+    3º - positive_pct (maior é melhor)
+    4º - revenue_per_review (maior é melhor)
+    """
+    df_sorted = df.sort_values(
+        by=["opportunity_score", "complexity_score", "positive_pct", "revenue_per_review"],
+        ascending=[False, True, False, False]
+    ).reset_index(drop=True)
+
+    df_sorted["rank"] = df_sorted.index + 1
+    return df_sorted
+
 def save_scores_to_db(df):
-    """
-    Salva os opportunity scores no banco de dados.
-    """
     print("\n💾 Salvando scores no banco...")
     conn = get_connection()
     cursor = conn.cursor()
@@ -240,15 +253,16 @@ def save_scores_to_db(df):
             app_id, name, release_date, is_indie, is_free,
             price_usd, owners_min, total_reviews, positive_pct,
             revenue_estimate, revenue_per_review,
-            ccu_to_owners_ratio, complexity_score, opportunity_score
+            ccu_to_owners_ratio, complexity_score, opportunity_score, rank
         )
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         ON CONFLICT (app_id) DO UPDATE SET
             opportunity_score   = EXCLUDED.opportunity_score,
             complexity_score    = EXCLUDED.complexity_score,
             revenue_estimate    = EXCLUDED.revenue_estimate,
             revenue_per_review  = EXCLUDED.revenue_per_review,
             ccu_to_owners_ratio = EXCLUDED.ccu_to_owners_ratio,
+            rank                = EXCLUDED.rank,
             collected_at        = NOW();
     """
 
@@ -270,6 +284,7 @@ def save_scores_to_db(df):
                 float(row["ccu_to_owners_ratio"]) if pd.notna(row.get("ccu_to_owners_ratio")) else None,
                 float(row["complexity_score"]) if pd.notna(row.get("complexity_score")) else None,
                 float(row["opportunity_score"]) if pd.notna(row.get("opportunity_score")) else None,
+                int(row["rank"]) if pd.notna(row.get("rank")) else None,
             ))
             sucesso += 1
         except Exception as e:
@@ -332,6 +347,7 @@ def run():
     )
     df.to_csv(output_path, index=False)
     print(f"\n✅ Resultado salvo em: {output_path}")
+    df = calc_rank(df)
     save_scores_to_db(df)
     print("\n🏁 Feature engineering concluído!")
 

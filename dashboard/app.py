@@ -52,9 +52,6 @@ def load_tags_data():
 
 @st.cache_data(ttl=3600)
 def load_opportunity_data():
-    """
-    Carrega os opportunity scores do banco, já com as tags agrupadas.
-    """
     conn = get_connection()
     query = """
         SELECT 
@@ -66,7 +63,7 @@ def load_opportunity_data():
             FROM game_tags
             GROUP BY app_id
         ) t ON os.app_id = t.app_id
-        ORDER BY os.opportunity_score DESC
+        ORDER BY os.rank ASC
     """
     df = pd.read_sql(query, conn)
     conn.close()
@@ -269,7 +266,7 @@ with tab1:
             )
         ]
 
-    df_filtered = df_filtered.sort_values("opportunity_score", ascending=False)
+    df_filtered = df_filtered.sort_values("rank", ascending=True)
 
     # ── Controle de quantidade ──
     total_disponivel = len(df_filtered)
@@ -300,7 +297,7 @@ with tab1:
     # ── Formata colunas antes de exibir ──
 # Resumo de tags removido — exibição completa via AgGrid
     df_display = df_display_raw[[
-        "name", "price_usd", "revenue_estimate",
+        "rank", "name", "price_usd", "revenue_estimate",
         "positive_pct", "complexity_score", "opportunity_score", "tags"
     ]].copy()
 
@@ -314,6 +311,7 @@ with tab1:
     df_display["opportunity_score"] = df_display["opportunity_score"].apply(lambda x: f"{x:.1f}")
 
     df_display = df_display.rename(columns={
+        "rank":               "#",
         "name":               "Jogo",
         "price_usd":          "Preço",
         "revenue_estimate":   "Receita Est.",
@@ -330,6 +328,7 @@ with tab1:
         cellStyle={"display": "flex", "alignItems": "center"}
     )
 
+    gb.configure_column("#", width=55, pinned="left", suppressSizeToFit=True)
     gb.configure_column("Jogo",          width=220, pinned="left", suppressSizeToFit=True)
     gb.configure_column("Preço",         width=90,  suppressSizeToFit=True)
     gb.configure_column("Receita Est.",  width=110, suppressSizeToFit=True)
@@ -354,16 +353,24 @@ with tab1:
 
     # CSS customizado — visual mais próximo do tema original do dashboard
     custom_css = {
+        ".ag-root-wrapper": {
+            "border-radius": "8px",
+            "border": "1px solid #2A3744",
+            "overflow": "hidden",
+        },
         ".ag-theme-alpine-dark": {
-            "--ag-background-color": "#0e1117",
-            "--ag-header-background-color": "#1a1d24",
-            "--ag-odd-row-background-color": "#161922",
-            "--ag-header-foreground-color": "#fafafa",
-            "--ag-foreground-color": "#fafafa",
-            "--ag-border-color": "#2a2e38",
-            "--ag-row-hover-color": "#21262f",
+            "--ag-background-color": "#0F1923",
+            "--ag-header-background-color": "#162330",
+            "--ag-odd-row-background-color": "#131F2B",
+            "--ag-header-foreground-color": "#E2E8F0",
+            "--ag-foreground-color": "#E2E8F0",
+            "--ag-border-color": "#2A3744",
+            "--ag-row-hover-color": "#1D9E7522",
+            "--ag-selected-row-background-color": "#1D9E7533",
             "--ag-font-size": "13px",
             "--ag-font-family": "'Source Sans Pro', sans-serif",
+            "--ag-header-column-separator-display": "block",
+            "--ag-header-column-separator-color": "#2A3744",
         }
     }
 
