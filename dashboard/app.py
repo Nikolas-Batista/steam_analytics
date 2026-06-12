@@ -321,7 +321,8 @@ with tab1:
                 "opportunity_score":  "Oportunidade",
                 "tags":               "Tags / Nichos"
             }),
-            use_container_width=False,
+            #use_container_width=True,
+            width=2000,
             height=500,
             hide_index=True,
             column_config={
