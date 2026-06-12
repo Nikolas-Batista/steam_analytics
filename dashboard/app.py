@@ -324,7 +324,11 @@ with tab1:
     })
 
     gb = GridOptionsBuilder.from_dataframe(df_display)
-    gb.configure_default_column(resizable=True, sortable=True, filter=False, suppressSizeToFit=True)
+    gb.configure_default_column(
+        resizable=True, sortable=True, filter=False,
+        suppressSizeToFit=True,
+        cellStyle={"display": "flex", "alignItems": "center"}
+    )
 
     gb.configure_column("Jogo",          width=220, pinned="left", suppressSizeToFit=True)
     gb.configure_column("Preço",         width=90,  suppressSizeToFit=True)
@@ -334,9 +338,43 @@ with tab1:
     gb.configure_column("Oportunidade",  width=110, suppressSizeToFit=True)
     gb.configure_column("Tags / Nichos", width=900, suppressSizeToFit=True)
 
-    gb.configure_grid_options(domLayout="normal", suppressColumnVirtualisation=True)
+    # Habilita menu de coluna (inclui export CSV) e botão de export geral
+    gb.configure_grid_options(
+        domLayout="normal",
+        suppressColumnVirtualisation=True,
+        enableCellTextSelection=True,
+        ensureDomOrder=True,
+    )
+
+    gb.configure_default_column(
+        menuTabs=["generalMenuTab", "filterMenuTab", "columnsMenuTab"]
+    )
 
     grid_options = gb.build()
+
+    # CSS customizado — visual mais próximo do tema original do dashboard
+    custom_css = {
+        ".ag-theme-alpine-dark": {
+            "--ag-background-color": "#0e1117",
+            "--ag-header-background-color": "#1a1d24",
+            "--ag-odd-row-background-color": "#161922",
+            "--ag-header-foreground-color": "#fafafa",
+            "--ag-foreground-color": "#fafafa",
+            "--ag-border-color": "#2a2e38",
+            "--ag-row-hover-color": "#21262f",
+            "--ag-font-size": "13px",
+            "--ag-font-family": "'Source Sans Pro', sans-serif",
+        }
+    }
+
+    # Botão de download da tabela filtrada (CSV)
+    csv_data = df_display.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📥 Baixar tabela (CSV)",
+        data=csv_data,
+        file_name="opportunity_scores_filtrado.csv",
+        mime="text/csv",
+    )
 
     AgGrid(
         df_display,
@@ -345,8 +383,31 @@ with tab1:
         fit_columns_on_grid_load=False,
         theme="alpine-dark",
         allow_unsafe_jscode=True,
+        custom_css=custom_css,
+        enable_enterprise_modules=False,
     )
- 
+
+    st.caption("💡 Clique com o botão direito no cabeçalho de qualquer coluna para acessar opções de exportação, ordenação e filtros adicionais.")
+   
+    # ── Gráfico (sempre top 20 do filtro, independente do "mostrar todos") ──
+    fig = px.bar(
+        df_filtered.head(20),
+        x="opportunity_score",
+        y="name",
+        orientation="h",
+        color="complexity_score",
+        color_continuous_scale="RdYlGn_r",
+        title="Top 20 — Opportunity Score (do filtro aplicado)",
+        labels={
+            "opportunity_score": "Score de Oportunidade",
+            "name": "Jogo",
+            "complexity_score": "Complexidade"
+        }
+    )
+    fig.update_layout(yaxis={"categoryorder": "total ascending"})
+    st.plotly_chart(fig, use_container_width=True)
+
+
 # ── ABA 2: ANÁLISE POR TAGS ───────────────
 
 with tab2:
