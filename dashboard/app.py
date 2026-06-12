@@ -264,7 +264,7 @@ with tab1:
     if nichos_selecionados:
         df_filtered = df_filtered[
             df_filtered["tags"].apply(
-                lambda tags: any(n in tags for n in nichos_selecionados)
+                lambda tags: all(n in tags for n in nichos_selecionados)
             )
         ]
 
@@ -290,6 +290,9 @@ with tab1:
 
     if mostrar_todos:
         top_n = total_disponivel
+    
+
+    
 
     df_display_raw = df_filtered.head(top_n)
 
@@ -318,7 +321,7 @@ with tab1:
                 "opportunity_score":  "Oportunidade",
                 "tags":               "Tags / Nichos"
             }),
-            use_container_width=True,
+            use_container_width=False,
             height=500,
             hide_index=True,
             column_config={
