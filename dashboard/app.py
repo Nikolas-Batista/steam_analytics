@@ -52,16 +52,41 @@ def load_tags_data():
 @st.cache_data(ttl=3600)
 def load_opportunity_data():
     """
-    Carrega os opportunity scores direto do banco.
+    Carrega os opportunity scores do banco, já com as tags agrupadas.
     """
     conn = get_connection()
     query = """
-        SELECT * FROM opportunity_scores
-        ORDER BY opportunity_score DESC
+        SELECT 
+            os.*,
+            COALESCE(t.tags, '') AS tags
+        FROM opportunity_scores os
+        LEFT JOIN (
+            SELECT app_id, STRING_AGG(tag, ', ' ORDER BY tag) AS tags
+            FROM game_tags
+            GROUP BY app_id
+        ) t ON os.app_id = t.app_id
+        ORDER BY os.opportunity_score DESC
     """
     df = pd.read_sql(query, conn)
     conn.close()
     return df
+
+@st.cache_data(ttl=3600)
+def load_available_tags():
+    """
+    Retorna lista de tags com pelo menos 10 jogos — usadas no filtro de nicho.
+    """
+    conn = get_connection()
+    query = """
+        SELECT tag, COUNT(*) AS total
+        FROM game_tags
+        GROUP BY tag
+        HAVING COUNT(*) >= 10
+        ORDER BY total DESC
+    """
+    df = pd.read_sql(query, conn)
+    conn.close()
+    return df["tag"].tolist()
 
 
 @st.cache_data(ttl=3600)
@@ -205,73 +230,118 @@ with tab1:
     st.subheader("Top Oportunidades de Mercado")
     st.markdown("Jogos com maior potencial para replicação — alto retorno, baixa complexidade.")
 
-    try:
-        df_opp = load_opportunity_data()
+    df_opp = load_opportunity_data()
+    tags_disponiveis = load_available_tags()
 
-        # Filtros
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            apenas_indie = st.checkbox("Apenas jogos Indie", value=False)
-        with col2:
-            max_complexity = st.slider("Complexidade máxima", 1, 10, 6)
-        with col3:
-            top_n = st.slider("Quantos jogos mostrar", 10, 100, 25)
+    # ── Filtros ──
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        apenas_indie = st.checkbox("Apenas jogos Indie", value=False)
+    with col2:
+        max_complexity = st.slider("Complexidade máxima", 1, 10, 6)
+    with col3:
+        score_range = st.slider("Faixa de Opportunity Score", 0, 100, (0, 100))
 
-        df_filtered = df_opp.copy()
-        if apenas_indie:
-            df_filtered = df_filtered[df_filtered["is_indie"] == True]
-        df_filtered = df_filtered[df_filtered["complexity_score"] <= max_complexity]
-        df_filtered = df_filtered.sort_values("opportunity_score", ascending=False).head(top_n)
+    nichos_selecionados = st.multiselect(
+        "Filtrar por nicho/tag (opcional):",
+        options=tags_disponiveis,
+        default=[]
+    )
 
-        # Tabela
- # Formata colunas antes de exibir
-        df_display = df_filtered[[
-            "name", "price_usd", "revenue_estimate",
-            "positive_pct", "complexity_score", "opportunity_score"
-        ]].copy()
+    # ── Aplica filtros ──
+    df_filtered = df_opp.copy()
 
-        df_display["revenue_estimate"] = df_display["revenue_estimate"].apply(
-            lambda x: f"${x/1_000_000:.2f}M" if x >= 1_000_000
-            else f"${x/1_000:.0f}K" if x >= 1_000
-            else f"${x:.0f}"
-        )
-        df_display["price_usd"]        = df_display["price_usd"].apply(lambda x: f"${x:.2f}")
-        df_display["positive_pct"]     = df_display["positive_pct"].apply(lambda x: f"{x:.1f}%")
-        df_display["opportunity_score"] = df_display["opportunity_score"].apply(lambda x: f"{x:.1f}")
+    if apenas_indie:
+        df_filtered = df_filtered[df_filtered["is_indie"] == True]
 
-        st.dataframe(
-            df_display.rename(columns={
-                "name":               "Jogo",
-                "price_usd":          "Preço",
-                "revenue_estimate":   "Receita Est.",
-                "positive_pct":       "Avaliação",
-                "complexity_score":   "Complexidade",
-                "opportunity_score":  "Oportunidade"
-            }),
-            use_container_width=True,
-            height=500
-        )
+    df_filtered = df_filtered[df_filtered["complexity_score"] <= max_complexity]
 
-        # Gráfico
-        fig = px.bar(
-            df_filtered.head(20),
-            x="opportunity_score",
-            y="name",
-            orientation="h",
-            color="complexity_score",
-            color_continuous_scale="RdYlGn_r",
-            title="Top 20 — Opportunity Score",
-            labels={
-                "opportunity_score": "Score de Oportunidade",
-                "name": "Jogo",
-                "complexity_score": "Complexidade"
-            }
-        )
-        fig.update_layout(yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(fig, use_container_width=True)
+    df_filtered = df_filtered[
+        (df_filtered["opportunity_score"] >= score_range[0]) &
+        (df_filtered["opportunity_score"] <= score_range[1])
+    ]
 
-    except FileNotFoundError:
-        st.warning("⚠️ Execute o feature_engineering.py primeiro para gerar os scores.")
+    if nichos_selecionados:
+        df_filtered = df_filtered[
+            df_filtered["tags"].apply(
+                lambda tags: any(n in tags for n in nichos_selecionados)
+            )
+        ]
+
+    df_filtered = df_filtered.sort_values("opportunity_score", ascending=False)
+
+    # ── Controle de quantidade ──
+    total_disponivel = len(df_filtered)
+    st.markdown(f"**{total_disponivel} jogos** encontrados com os filtros aplicados.")
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        if total_disponivel > 1:
+            top_n = st.slider(
+                "Quantos jogos mostrar",
+                min_value=1,
+                max_value=total_disponivel,
+                value=min(25, total_disponivel)
+            )
+        else:
+            top_n = total_disponivel
+    with col2:
+        mostrar_todos = st.checkbox("Mostrar todos", value=False)
+
+    if mostrar_todos:
+        top_n = total_disponivel
+
+    df_display_raw = df_filtered.head(top_n)
+
+    # ── Formata colunas antes de exibir ──
+    df_display = df_display_raw[[
+        "name", "price_usd", "revenue_estimate",
+        "positive_pct", "complexity_score", "opportunity_score", "tags"
+    ]].copy()
+
+    df_display["revenue_estimate"] = df_display["revenue_estimate"].apply(
+        lambda x: f"${x/1_000_000:.2f}M" if x >= 1_000_000
+        else f"${x/1_000:.0f}K" if x >= 1_000
+        else f"${x:.0f}"
+    )
+    df_display["price_usd"]         = df_display["price_usd"].apply(lambda x: f"${x:.2f}")
+    df_display["positive_pct"]      = df_display["positive_pct"].apply(lambda x: f"{x:.1f}%")
+    df_display["opportunity_score"] = df_display["opportunity_score"].apply(lambda x: f"{x:.1f}")
+
+    st.dataframe(
+        df_display.rename(columns={
+            "name":               "Jogo",
+            "price_usd":          "Preço",
+            "revenue_estimate":   "Receita Est.",
+            "positive_pct":       "Avaliação",
+            "complexity_score":   "Complexidade",
+            "opportunity_score":  "Oportunidade",
+            "tags":               "Tags / Nichos"
+        }),
+        use_container_width=True,
+        height=500,
+        column_config={
+            "Tags / Nichos": st.column_config.TextColumn(width="large")
+        }
+    )
+
+    # ── Gráfico (sempre top 20 do filtro, independente do "mostrar todos") ──
+    fig = px.bar(
+        df_filtered.head(20),
+        x="opportunity_score",
+        y="name",
+        orientation="h",
+        color="complexity_score",
+        color_continuous_scale="RdYlGn_r",
+        title="Top 20 — Opportunity Score (do filtro aplicado)",
+        labels={
+            "opportunity_score": "Score de Oportunidade",
+            "name": "Jogo",
+            "complexity_score": "Complexidade"
+        }
+    )
+    fig.update_layout(yaxis={"categoryorder": "total ascending"})
+    st.plotly_chart(fig, use_container_width=True)
 
 
 # ── ABA 2: ANÁLISE POR TAGS ───────────────
