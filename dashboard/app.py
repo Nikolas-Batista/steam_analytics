@@ -311,7 +311,7 @@ with tab1:
     df_display["positive_pct"]      = df_display["positive_pct"].apply(lambda x: f"{x:.1f}%")
     df_display["opportunity_score"] = df_display["opportunity_score"].apply(lambda x: f"{x:.1f}")
 
-    st.dataframe(
+    '''st.dataframe(
             df_display.rename(columns={
                 "name":               "Jogo",
                 "price_usd":          "Preço",
@@ -321,8 +321,7 @@ with tab1:
                 "opportunity_score":  "Oportunidade",
                 "tags":               "Tags / Nichos"
             }),
-            #use_container_width=True,
-            width=2000,
+            use_container_width=True,
             height=500,
             hide_index=True,
             column_config={
@@ -334,7 +333,30 @@ with tab1:
                 "Oportunidade":  st.column_config.TextColumn(width="small"),
                 "Tags / Nichos": st.column_config.TextColumn(width="large"),
             }
-        )
+        )'''
+    
+    st.dataframe(
+        df_display.rename(columns={
+            "name": "Jogo",
+            "price_usd": "Preço",
+            "revenue_estimate": "Receita Est.",
+            "positive_pct": "Avaliação",
+            "complexity_score": "Complexidade",
+            "opportunity_score": "Oportunidade",
+            "tags": "Tags / Nichos"
+        }),
+        height=500,
+        hide_index=True,
+        column_config={
+            "Jogo": st.column_config.TextColumn(width=500),
+            "Preço": st.column_config.TextColumn(width=200),
+            "Receita Est.": st.column_config.TextColumn(width=250),
+            "Avaliação": st.column_config.TextColumn(width=200),
+            "Complexidade": st.column_config.TextColumn(width=250),
+            "Oportunidade": st.column_config.TextColumn(width=250),
+            "Tags / Nichos": st.column_config.TextColumn(width=1000),
+        }
+    )    
 
     # ── Gráfico (sempre top 20 do filtro, independente do "mostrar todos") ──
     fig = px.bar(
