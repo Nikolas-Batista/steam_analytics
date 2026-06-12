@@ -298,21 +298,7 @@ with tab1:
     df_display_raw = df_filtered.head(top_n)
 
     # ── Formata colunas antes de exibir ──
-    df_display = df_display_raw[[
-        "name", "price_usd", "revenue_estimate",
-        "positive_pct", "complexity_score", "opportunity_score", "tags"
-    ]].copy()
-
-    df_display["revenue_estimate"] = df_display["revenue_estimate"].apply(
-        lambda x: f"${x/1_000_000:.2f}M" if x >= 1_000_000
-        else f"${x/1_000:.0f}K" if x >= 1_000
-        else f"${x:.0f}"
-    )
-    df_display["price_usd"]         = df_display["price_usd"].apply(lambda x: f"${x:.2f}")
-    df_display["positive_pct"]      = df_display["positive_pct"].apply(lambda x: f"{x:.1f}%")
-    df_display["opportunity_score"] = df_display["opportunity_score"].apply(lambda x: f"{x:.1f}")
-
-    # Remove a etapa de resumir tags - mostra completo
+# Resumo de tags removido — exibição completa via AgGrid
     df_display = df_display_raw[[
         "name", "price_usd", "revenue_estimate",
         "positive_pct", "complexity_score", "opportunity_score", "tags"
@@ -337,18 +323,18 @@ with tab1:
         "tags":               "Tags / Nichos"
     })
 
-    # Configuração do grid
     gb = GridOptionsBuilder.from_dataframe(df_display)
+    gb.configure_default_column(resizable=True, sortable=True, filter=False, suppressSizeToFit=True)
 
-    gb.configure_default_column(resizable=True, sortable=True, filter=False)
+    gb.configure_column("Jogo",          width=220, pinned="left", suppressSizeToFit=True)
+    gb.configure_column("Preço",         width=90,  suppressSizeToFit=True)
+    gb.configure_column("Receita Est.",  width=110, suppressSizeToFit=True)
+    gb.configure_column("Avaliação",     width=100, suppressSizeToFit=True)
+    gb.configure_column("Complexidade",  width=110, suppressSizeToFit=True)
+    gb.configure_column("Oportunidade",  width=110, suppressSizeToFit=True)
+    gb.configure_column("Tags / Nichos", width=900, suppressSizeToFit=True)
 
-    gb.configure_column("Jogo",          width=200, pinned="left")
-    gb.configure_column("Preço",         width=90)
-    gb.configure_column("Receita Est.",  width=110)
-    gb.configure_column("Avaliação",     width=100)
-    gb.configure_column("Complexidade",  width=110)
-    gb.configure_column("Oportunidade",  width=110)
-    gb.configure_column("Tags / Nichos", width=600, wrapText=False)
+    gb.configure_grid_options(domLayout="normal", suppressColumnVirtualisation=True)
 
     grid_options = gb.build()
 
@@ -360,50 +346,7 @@ with tab1:
         theme="alpine-dark",
         allow_unsafe_jscode=True,
     )
-
-    '''st.dataframe(
-            df_display.rename(columns={
-                "name":               "Jogo",
-                "price_usd":          "Preço",
-                "revenue_estimate":   "Receita Est.",
-                "positive_pct":       "Avaliação",
-                "complexity_score":   "Complexidade",
-                "opportunity_score":  "Oportunidade",
-                "tags":               "Tags / Nichos"
-            }),
-            use_container_width=True,
-            height=500,
-            hide_index=True,
-            column_config={
-                "Jogo":          st.column_config.TextColumn(width="medium"),
-                "Preço":         st.column_config.TextColumn(width="small"),
-                "Receita Est.":  st.column_config.TextColumn(width="small"),
-                "Avaliação":     st.column_config.TextColumn(width="small"),
-                "Complexidade":  st.column_config.TextColumn(width="small"),
-                "Oportunidade":  st.column_config.TextColumn(width="small"),
-                "Tags / Nichos": st.column_config.TextColumn(width="large"),
-            }
-        )'''
-
-    # ── Gráfico (sempre top 20 do filtro, independente do "mostrar todos") ──
-    fig = px.bar(
-        df_filtered.head(20),
-        x="opportunity_score",
-        y="name",
-        orientation="h",
-        color="complexity_score",
-        color_continuous_scale="RdYlGn_r",
-        title="Top 20 — Opportunity Score (do filtro aplicado)",
-        labels={
-            "opportunity_score": "Score de Oportunidade",
-            "name": "Jogo",
-            "complexity_score": "Complexidade"
-        }
-    )
-    fig.update_layout(yaxis={"categoryorder": "total ascending"})
-    st.plotly_chart(fig, use_container_width=True)
-
-
+ 
 # ── ABA 2: ANÁLISE POR TAGS ───────────────
 
 with tab2:
