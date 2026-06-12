@@ -20,6 +20,15 @@ Número de reviews × multiplicador  ≈  Número estimado de donos (owners)
 
 O multiplicador varia historicamente entre **35 e 80**, dependendo de quantas reviews o jogo tem (jogos com poucas reviews tendem a ter proporção diferente de jogos populares).
 
+| Faixa de reviews | Multiplicador aproximado | Intuição |
+|---|---|---|
+| Menos de 100 | ~70–80 | Jogos pequenos têm proporcionalmente menos gente disposta a deixar review — cada review "representa" mais compradores |
+| 100 – 1.000 | ~50–60 | Faixa intermediária, mais comum entre indies com tração moderada |
+| 1.000 – 10.000 | ~40–50 | Jogos com base de jogadores maior tendem a ter mais reviews por comprador |
+| Mais de 10.000 | ~30–40 | Jogos populares atraem um público mais engajado em deixar avaliações, reduzindo o multiplicador necessário |
+
+> No nosso pipeline atual usamos um multiplicador único e simplificado (não diferenciado por faixa). A tabela acima mostra o range histórico de referência do método — uma possível evolução futura é aplicar o multiplicador variável por faixa, o que tornaria a estimativa de owners ainda mais precisa para jogos pequenos (que são justamente o nosso foco).
+
 ### De "donos estimados" para "faturamento"
 
 Uma vez estimado o número de donos, multiplicamos pelo preço do jogo:

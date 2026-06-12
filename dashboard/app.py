@@ -388,10 +388,8 @@ with tab1:
         gridOptions=grid_options,
         height=500,
         fit_columns_on_grid_load=False,
-        theme="alpine-dark",
+        theme="balham-dark",
         allow_unsafe_jscode=True,
-        custom_css=custom_css,
-        enable_enterprise_modules=False,
     )
 
     st.caption("💡 Clique com o botão direito no cabeçalho de qualquer coluna para acessar opções de exportação, ordenação e filtros adicionais.")
